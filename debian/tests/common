@@ -1,3 +1,8 @@
+if ! grep -q -E '^Seccomp:[[:blank:]]+0$' /proc/self/status; then
+  echo "Skipping autpkgptest as the test environment already applies a seccomp filter"
+  exit 77
+fi
+
 SRCDIR="$(pwd)"
 
 mkdir "$AUTOPKGTEST_TMP/tests" "$AUTOPKGTEST_TMP/tools"

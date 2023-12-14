@@ -1,8 +1,15 @@
-libseccomp (2.5.4-1) UNRELEASED; urgency=medium
+libseccomp (2.5.4-2) unstable; urgency=medium
 
-  * update
+  * Fix watch file. (Closes: #1050659)
+  * Dynamically skip autopkgtests when the test runner already applies seccomp
+    restrictions.
+    - Drop isolation-machine restriction.
+  * Fix FTBFS with setuptools. (Closes: #1054788, #1033641)
+    - Add python_Fix_distutils_DeprecationWarning.patch
+    - Add python_single_version_externally_managed.patch
+    - Explicitly build-depend on python3-setuptools
 
- -- Kees Cook <kees@debian.org>  Sat, 23 Jul 2022 16:29:16 +0800
+ -- Felix Geyer <fgeyer@debian.org>  Sun, 29 Oct 2023 15:13:08 +0100
 
 libseccomp (2.5.4-1) unstable; urgency=medium
 

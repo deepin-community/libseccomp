@@ -1,0 +1,55 @@
+From afbde6ddaec7c58c3b281d43b0b287269ffca9bd Mon Sep 17 00:00:00 2001
+From: Tom Hromatka <tom.hromatka@oracle.com>
+Date: Mon, 21 Mar 2022 11:24:25 -0600
+Subject: [PATCH] python: Fix distutils DeprecationWarning
+
+The python distutils package is deprecated.  Utilize
+setuptools and cythonize instead.
+
+	./setup.py:26: DeprecationWarning: The distutils
+	package is deprecated and slated for removal in
+	Python 3.12. Use setuptools or check PEP 632 [1] for
+	potential alternatives
+
+[1] https://peps.python.org/pep-0632/
+
+Fixes: https://github.com/seccomp/libseccomp/issues/372
+Acked-by: Paul Moore <paul@paul-moore.com>
+Signed-off-by: Tom Hromatka <tom.hromatka@oracle.com>
+---
+ src/python/setup.py | 15 ++++++---------
+ 1 file changed, 6 insertions(+), 9 deletions(-)
+
+diff --git a/src/python/setup.py b/src/python/setup.py
+index 04191117..46f9a731 100755
+--- a/src/python/setup.py
++++ b/src/python/setup.py
+@@ -23,9 +23,9 @@
+ 
+ import os
+ 
+-from distutils.core import setup
+-from distutils.extension import Extension
+-from Cython.Distutils import build_ext
++from setuptools import setup
++from setuptools.extension import Extension
++from Cython.Build import cythonize
+ 
+ setup(
+ 	name = "seccomp",
+@@ -37,12 +37,9 @@
+ 	maintainer_email = "paul@paul-moore.com",
+ 	license = "LGPLv2.1",
+ 	platforms = "Linux",
+-	cmdclass = {'build_ext': build_ext},
+-	ext_modules = [
++	ext_modules = cythonize([
+ 		Extension("seccomp", ["seccomp.pyx"],
+ 			# unable to handle libtool libraries directly
+-			extra_objects=["../.libs/libseccomp.a"],
+-			# fix build warnings, see PEP 3123
+-			extra_compile_args=["-fno-strict-aliasing"])
+-	]
++			extra_objects=["../.libs/libseccomp.a"]),
++	])
+ )
