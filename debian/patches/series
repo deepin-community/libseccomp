@@ -1,3 +1,4 @@
 python_Fix_distutils_DeprecationWarning.patch
 python_single_version_externally_managed.patch
 add-loong64-support.patch
+0001-feat-add-sw64-support.patch
