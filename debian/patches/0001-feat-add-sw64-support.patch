@@ -587,8 +587,8 @@ Index: libseccomp/src/arch-sw_64.c
 +	.token_bpf = AUDIT_ARCH_SW64,
 +	.size = ARCH_SIZE_64,
 +	.endian = ARCH_ENDIAN_LITTLE,
-+	.syscall_resolve_name = sw_64_syscall_resolve_name,
-+	.syscall_resolve_num = sw_64_syscall_resolve_num,
++	.syscall_resolve_name_raw = sw_64_syscall_resolve_name,
++	.syscall_resolve_num_raw = sw_64_syscall_resolve_num,
 +	.syscall_rewrite = NULL,
 +	.rule_add = NULL,
 +};

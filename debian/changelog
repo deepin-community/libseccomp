@@ -1,3 +1,9 @@
+libseccomp (2.6.0-2deepin2) unstable; urgency=medium
+
+  * arch-sw_64.c: rename scall_resolve_name and scall_resolve_num to *_raw.
+
+ -- tunaichao <tunaichao@uniontech.com>  Tue, 17 Mar 2026 10:00:40 +0800
+
 libseccomp (2.6.0-2deepin1) unstable; urgency=medium
 
   * feat: add sw64 support.
