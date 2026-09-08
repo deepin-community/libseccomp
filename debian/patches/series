@@ -1,4 +1,14 @@
 python_Fix_distutils_DeprecationWarning.patch
 python_single_version_externally_managed.patch
-add-loong64-support.patch
-0001-feat-add-sw64-support.patch
+
+# loongarch64 support
+syscalls_update_to_Linux_v6.0.patch
+tests_add_fstatfs_syscall_in_the_06-sim-actions.patch
+arch_Add_64-bit_LoongArch_support.patch
+tests_Add_64-bit_LoongArch_support.patch
+doc_update_README_and_manpage_for_64-bit_LoongArch.patch
+tests_Fix_wrong_syscall-error_in_test_29.patch
+tests_only_use_bogus_syscall_numbers_in_test_29.patch
+arch_unify_handling_of_syscall.tbl_in_arch-syscall-validate.patch
+arch_adapt_arch-syscall-validate_to_Linux_6.11.patch
+syscalls_Update_the_syscall_table_for_Linux_v6.12-rc5.patch
