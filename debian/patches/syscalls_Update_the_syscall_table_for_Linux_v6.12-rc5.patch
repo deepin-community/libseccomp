@@ -1,0 +1,268 @@
+From f01e67509e45c672f4bdd643d94d90867cc19d90 Mon Sep 17 00:00:00 2001
+From: WANG Xuerui <git@xen0n.name>
+Date: Tue, 20 Aug 2024 12:21:21 +0800
+Subject: [PATCH] syscalls: Update the syscall table for Linux v6.12-rc5
+
+Due to the addition of fstat & newfstatat to the LoongArch syscall ABI,
+tests 38 and 55 have to be updated for the changed syscall numbers.
+
+As for the PNR additions, normally they are allocated alphabetically for
+the syscalls introduced between updates of the table, but in the v2.5
+release branch -10245 is already assigned to map_shadow_stack in
+commit 53267af3fb5 ("all: update the syscall table for Linux v6.7-rc3").
+While the map_shadow_stack syscall is in fact available across all
+architectures, for consistency with v2.5.5 and later it is kept in the
+same position in this update.
+
+Signed-off-by: WANG Xuerui <git@xen0n.name>
+Signed-off-by: Paul Moore <paul@paul-moore.com>
+---
+ include/seccomp-syscalls.h         | 51 +++++++++++++++++++++++++++---
+ src/syscalls.csv                   | 26 +++++++++++----
+ tests/38-basic-pfc_coverage.pfc    |  6 ++--
+ tests/55-basic-pfc_binary_tree.pfc | 20 ++++++------
+ 4 files changed, 80 insertions(+), 23 deletions(-)
+
+diff --git a/include/seccomp-syscalls.h b/include/seccomp-syscalls.h
+index 9488adc4..aff07d44 100644
+--- a/include/seccomp-syscalls.h
++++ b/include/seccomp-syscalls.h
+@@ -276,6 +276,11 @@
+ #define __PNR_memfd_secret			-10244
+ #define __PNR_map_shadow_stack			-10245
+ #define __PNR_fstat				-10246
++#define __PNR_atomic_barrier			-10247
++#define __PNR_atomic_cmpxchg_32			-10248
++#define __PNR_getpagesize			-10249
++#define __PNR_riscv_hwprobe			-10250
++#define __PNR_uretprobe				-10251
+ 
+ /*
+  * libseccomp syscall definitions
+@@ -1065,6 +1078,8 @@
+ #define __SNR_listen			__PNR_listen
+ #endif
+ 
++#define __SNR_listmount			__NR_listmount
++
+ #define __SNR_listxattr			__NR_listxattr
+ 
+ #define __SNR_llistxattr		__NR_llistxattr
+@@ -1083,6 +1098,12 @@
+ 
+ #define __SNR_lsetxattr			__NR_lsetxattr
+ 
++#define __SNR_lsm_get_self_attr		__NR_lsm_get_self_attr
++
++#define __SNR_lsm_list_modules		__NR_lsm_list_modules
++
++#define __SNR_lsm_set_self_attr		__NR_lsm_set_self_attr
++
+ #ifdef __NR_lstat
+ #define __SNR_lstat			__NR_lstat
+ #else
+@@ -1219,6 +1246,8 @@
+ 
+ #define __SNR_mremap			__NR_mremap
+ 
++#define __SNR_mseal			__NR_mseal
++
+ #ifdef __NR_msgctl
+ #define __SNR_msgctl			__NR_msgctl
+ #else
+@@ -1561,6 +1590,12 @@
+ #define __SNR_riscv_flush_icache	__PNR_riscv_flush_icache
+ #endif
+ 
++#ifdef __NR_riscv_hwprobe
++#define __SNR_riscv_hwprobe		__NR_riscv_hwprobe
++#else
++#define __SNR_riscv_hwprobe		__PNR_riscv_hwprobe
++#endif
++
+ #ifdef __NR_rmdir
+ #define __SNR_rmdir			__NR_rmdir
+ #else
+@@ -2051,6 +2086,8 @@
+ #define __SNR_statfs64			__PNR_statfs64
+ #endif
+ 
++#define __SNR_statmount			__NR_statmount
++
+ #ifdef __NR_statx
+ #define __SNR_statx			__NR_statx
+ #else
+@@ -2259,6 +2296,12 @@
+ 
+ #define __SNR_unshare			__NR_unshare
+ 
++#ifdef __NR_uretprobe
++#define __SNR_uretprobe			__NR_uretprobe
++#else
++#define __SNR_uretprobe			__PNR_uretprobe
++#endif
++
+ #ifdef __NR_uselib
+ #define __SNR_uselib			__NR_uselib
+ #else
+diff --git a/src/syscalls.csv b/src/syscalls.csv
+index 1a831bfd..322fced6 100644
+--- a/src/syscalls.csv
++++ b/src/syscalls.csv
+@@ -1,4 +1,4 @@
+-#syscall (v6.7.0 2024-02-05),x86,x86_64,x32,arm,aarch64,loongarch64,mips,mips64,mips64n32,parisc,parisc64,ppc,ppc64,riscv64,s390,s390x
++#syscall (v6.12.0-rc5 2024-10-31),x86,x86_64,x32,arm,aarch64,loongarch64,mips,mips64,mips64n32,parisc,parisc64,ppc,ppc64,riscv64,s390,s390x
+ accept,PNR,43,43,285,202,202,168,42,42,35,35,330,330,202,PNR,PNR
+ accept4,364,288,288,366,242,242,334,293,297,320,320,344,344,242,364,364
+ access,33,21,21,33,PNR,PNR,33,20,20,33,33,33,33,PNR,33,33
+@@ -90,7 +90,7 @@
+ fsmount,432,432,432,432,432,432,432,432,432,432,432,432,432,432,432,432
+ fsopen,430,430,430,430,430,430,430,430,430,430,430,430,430,430,430,430
+ fspick,433,433,433,433,433,433,433,433,433,433,433,433,433,433,433,433
+-fstat,108,5,5,108,80,PNR,108,5,5,28,28,108,108,80,108,108
++fstat,108,5,5,108,80,80,108,5,5,28,28,108,108,80,108,108
+ fstat64,197,PNR,PNR,197,PNR,PNR,215,PNR,PNR,112,112,197,PNR,PNR,197,PNR
+ fstatat64,300,PNR,PNR,327,PNR,PNR,293,PNR,PNR,280,280,291,PNR,PNR,293,PNR
+ fstatfs,100,138,138,100,44,44,100,135,135,100,100,100,100,44,100,100
+@@ -183,6 +183,7 @@
+ link,9,86,86,9,PNR,PNR,9,84,84,9,9,9,9,PNR,9,9
+ linkat,303,265,265,330,37,37,296,255,259,283,283,294,294,37,296,296
+ listen,363,50,50,284,201,201,174,49,49,32,32,329,329,201,363,363
++listmount,458,458,458,458,458,458,458,458,458,458,458,458,458,458,458,458
+ listxattr,232,194,194,232,11,11,230,186,186,244,244,215,215,11,230,230
+ llistxattr,233,195,195,233,12,12,231,187,187,245,245,216,216,12,231,231
+ _llseek,140,PNR,PNR,140,PNR,PNR,140,PNR,PNR,140,140,140,140,PNR,140,PNR
+@@ -191,10 +192,13 @@
+ lremovexattr,236,198,198,236,15,15,234,190,190,248,248,219,219,15,234,234
+ lseek,19,8,8,19,62,62,19,8,8,19,19,19,19,62,19,19
+ lsetxattr,227,189,189,227,6,6,225,181,181,239,239,210,210,6,225,225
++lsm_get_self_attr,459,459,459,459,459,459,459,459,459,459,459,459,459,459,459,459
++lsm_list_modules,461,461,461,461,461,461,461,461,461,461,461,461,461,461,461,461
++lsm_set_self_attr,460,460,460,460,460,460,460,460,460,460,460,460,460,460,460,460
+ lstat,107,6,6,107,PNR,PNR,107,6,6,84,84,107,107,PNR,107,107
+ lstat64,196,PNR,PNR,196,PNR,PNR,214,PNR,PNR,198,198,196,PNR,PNR,196,PNR
+ madvise,219,28,28,220,233,233,218,27,27,119,119,205,205,233,219,219
+-map_shadow_stack,453,453,PNR,453,453,453,453,453,453,453,453,453,453,453,453,453
++map_shadow_stack,453,453,453,453,453,453,453,453,453,453,453,453,453,453,453,453
+ mbind,274,237,237,319,235,235,268,227,231,260,260,259,259,235,268,268
+ membarrier,375,324,324,389,283,283,358,318,322,343,343,365,365,283,356,356
+ memfd_create,356,319,319,385,279,279,354,314,318,340,340,360,360,279,350,350
+@@ -226,6 +230,7 @@
+ mq_timedsend_time64,418,PNR,PNR,418,PNR,PNR,418,PNR,418,418,PNR,418,PNR,PNR,418,PNR
+ mq_unlink,278,241,241,275,181,181,272,231,235,230,230,263,263,181,272,272
+ mremap,163,25,25,163,216,216,167,24,24,163,163,163,163,216,163,163
++mseal,462,462,462,462,462,462,462,462,462,462,462,462,462,462,462,462
+ msgctl,402,71,71,304,187,187,402,69,69,191,191,402,402,187,402,402
+ msgget,399,68,68,303,186,186,399,66,66,190,190,399,399,186,399,399
+ msgrcv,401,70,70,302,188,188,401,68,68,189,189,401,401,188,401,401
+@@ -237,7 +242,7 @@
+ munmap,91,11,11,91,215,215,91,11,11,91,91,91,91,215,91,91
+ name_to_handle_at,341,303,303,370,264,264,339,298,303,325,325,345,345,264,335,335
+ nanosleep,162,35,35,162,101,101,166,34,34,162,162,162,162,101,162,162
+-newfstatat,PNR,262,262,PNR,79,PNR,PNR,252,256,PNR,PNR,PNR,291,79,PNR,293
++newfstatat,PNR,262,262,PNR,79,79,PNR,252,256,PNR,PNR,PNR,291,79,PNR,293
+ _newselect,142,PNR,PNR,142,PNR,PNR,142,22,22,142,142,142,142,PNR,142,PNR
+ nfsservctl,169,180,PNR,169,42,42,189,173,173,PNR,PNR,168,168,42,169,169
+ nice,34,PNR,PNR,34,PNR,PNR,34,PNR,PNR,34,34,34,34,PNR,34,34
+@@ -310,6 +315,7 @@
+ request_key,287,249,249,310,218,218,281,240,244,265,265,270,270,218,279,279
+ restart_syscall,0,219,219,0,128,128,253,213,214,0,0,0,0,128,7,7
+ riscv_flush_icache,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,259,PNR,PNR
++riscv_hwprobe,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,258,PNR,PNR
+ rmdir,40,84,84,40,PNR,PNR,40,82,82,40,40,40,40,PNR,40,40
+ rseq,386,334,334,398,293,293,367,327,331,354,354,387,387,293,383,383
+ rtas,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,255,255,PNR,PNR,PNR
+@@ -415,6 +421,7 @@
+ stat64,195,PNR,PNR,195,PNR,PNR,213,PNR,PNR,101,101,195,PNR,PNR,195,PNR
+ statfs,99,137,137,99,43,43,99,134,134,99,99,99,99,43,99,99
+ statfs64,268,PNR,PNR,266,PNR,PNR,255,PNR,217,298,298,252,252,PNR,265,265
++statmount,457,457,457,457,457,457,457,457,457,457,457,457,457,457,457,457
+ statx,383,332,332,397,291,291,366,326,330,349,349,383,383,291,379,379
+ stime,25,PNR,PNR,PNR,PNR,PNR,25,PNR,PNR,25,25,25,25,PNR,25,PNR
+ stty,31,PNR,PNR,PNR,PNR,PNR,31,PNR,PNR,PNR,PNR,31,31,PNR,PNR,PNR
+@@ -466,6 +473,7 @@
+ unlink,10,87,87,10,PNR,PNR,10,85,85,10,10,10,10,PNR,10,10
+ unlinkat,301,263,263,328,35,35,294,253,257,281,281,292,292,35,294,294
+ unshare,310,272,272,337,97,97,303,262,266,288,288,282,282,97,303,303
++uretprobe,PNR,335,335,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR
+ uselib,86,134,PNR,86,PNR,PNR,86,PNR,PNR,86,86,86,86,PNR,86,86
+ userfaultfd,374,323,323,388,282,282,357,317,321,344,344,364,364,282,355,355
+ usr26,PNR,PNR,PNR,983043,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR,PNR
+diff --git a/tests/38-basic-pfc_coverage.pfc b/tests/38-basic-pfc_coverage.pfc
+index 815470e6..02cbf726 100644
+--- a/tests/38-basic-pfc_coverage.pfc
++++ b/tests/38-basic-pfc_coverage.pfc
+@@ -305,15 +305,15 @@ if ($arch == 3221225730)
+   # filter for syscall "open" (4294957130) [priority: 65535]
+   if ($syscall == 4294957130)
+     action KILL;
+-  # filter for syscall "fstat" (4294957051) [priority: 65535]
+-  if ($syscall == 4294957051)
+-    action KILL_PROCESS;
+   # filter for syscall "exit_group" (94) [priority: 65535]
+   if ($syscall == 94)
+     action LOG;
+   # filter for syscall "exit" (93) [priority: 65535]
+   if ($syscall == 93)
+     action TRACE(1);
++  # filter for syscall "fstat" (80) [priority: 65535]
++  if ($syscall == 80)
++    action KILL_PROCESS;
+   # filter for syscall "close" (57) [priority: 65535]
+   if ($syscall == 57)
+     action ERRNO(1);
+diff --git a/tests/55-basic-pfc_binary_tree.pfc b/tests/55-basic-pfc_binary_tree.pfc
+index 33109454..e63aa12c 100644
+--- a/tests/55-basic-pfc_binary_tree.pfc
++++ b/tests/55-basic-pfc_binary_tree.pfc
+@@ -178,8 +178,8 @@ if ($arch == 3221225655)
+ # filter for arch loongarch64 (3221225730)
+ if ($arch == 3221225730)
+   if ($syscall > 62)
+-    if ($syscall > 214)
+-      if ($syscall > 4294957051)
++    if ($syscall > 139)
++      if ($syscall > 226)
+         # filter for syscall "lstat" (4294957133) [priority: 65535]
+         if ($syscall == 4294957133)
+           action ERRNO(6);
+@@ -192,12 +192,7 @@ if ($arch == 3221225730)
+         # filter for syscall "stat" (4294957122) [priority: 65535]
+         if ($syscall == 4294957122)
+           action ERRNO(4);
+-      else # ($syscall <= 4294957051)
+-        # filter for syscall "fstat" (4294957051) [priority: 65533]
+-        if ($syscall == 4294957051)
+-          if ($a0.hi32 == 0)
+-            if ($a0.lo32 == 103)
+-              action ERRNO(5);
++      else # ($syscall <= 226)
+         # filter for syscall "mprotect" (226) [priority: 65533]
+         if ($syscall == 226)
+           if ($a0.hi32 == 0)
+@@ -209,11 +204,11 @@ if ($arch == 3221225730)
+         # filter for syscall "munmap" (215) [priority: 65535]
+         if ($syscall == 215)
+           action ERRNO(11);
+-    else # ($syscall <= 214)
+-      if ($syscall > 68)
+         # filter for syscall "brk" (214) [priority: 65535]
+         if ($syscall == 214)
+           action ERRNO(12);
++    else # ($syscall <= 139)
++      if ($syscall > 68)
+         # filter for syscall "rt_sigreturn" (139) [priority: 65535]
+         if ($syscall == 139)
+           action ERRNO(15);
+@@ -223,6 +218,11 @@ if ($arch == 3221225730)
+         # filter for syscall "rt_sigaction" (134) [priority: 65535]
+         if ($syscall == 134)
+           action ERRNO(13);
++        # filter for syscall "fstat" (80) [priority: 65533]
++        if ($syscall == 80)
++          if ($a0.hi32 == 0)
++            if ($a0.lo32 == 103)
++              action ERRNO(5);
+       else # ($syscall <= 68)
+         # filter for syscall "pwrite64" (68) [priority: 65531]
+         if ($syscall == 68)

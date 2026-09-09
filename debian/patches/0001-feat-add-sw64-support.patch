@@ -1,89 +1,146 @@
-From 9a79354ec9f61bafc184383d2d02b0e39aec7af1 Mon Sep 17 00:00:00 2001
-From: hudeng <hudeng@deepin.org>
-Date: Fri, 30 May 2025 08:34:23 +0800
-Subject: [PATCH] feat: add sw64 support
+Description: add sw64 (SW-64) architecture support
+ Add support for the sw64 architecture in libseccomp:
+ arch-sw_64.{c,h}, arch-sw_64-syscalls.c, arch detection in arch.c,
+ gen_pfc/arch-syscall-dump output, tools, tests and doc updates.
+ Rebased for 2.5.5-2 (upstream + deepin loong64 patches applied first);
+ arch_def uses the _raw resolve callbacks backed by the self-contained
+ sw64 syscall table in arch-sw_64-syscalls.c (no syscalls.csv column).
+Author: hudeng <hudeng@deepin.org>
+Origin: vendor
+Forwarded: not-needed
+Last-Update: 2026-09-09
 
----
- doc/man/man1/scmp_sys_resolver.1  |   2 +-
- include/seccomp.h.in              |  14 +
- src/Makefile.am                   |   1 +
- src/arch-sw_64-syscalls.c         | 466 ++++++++++++++++++++++++++++++
- src/arch-sw_64.c                  |  38 +++
- src/arch-sw_64.h                  |  37 +++
- src/arch-syscall-dump.c           |   4 +
- src/arch.c                        |   7 +
- src/gen_pfc.c                     |   2 +
- tests/16-sim-arch_basic.c         |   3 +
- tests/16-sim-arch_basic.py        |   1 +
- tests/23-sim-arch_all_le_basic.c  |   3 +
- tests/23-sim-arch_all_le_basic.py |   1 +
- tests/regression                  |   3 +-
- tools/scmp_arch_detect.c          |   3 +
- tools/scmp_bpf_disasm.c           |   2 +
- tools/scmp_bpf_sim.c              |   2 +
- tools/util.c                      |   2 +
- tools/util.h                      |  11 +
- 19 files changed, 600 insertions(+), 2 deletions(-)
- create mode 100644 src/arch-sw_64-syscalls.c
- create mode 100644 src/arch-sw_64.c
- create mode 100644 src/arch-sw_64.h
-
-diff --git a/doc/man/man1/scmp_sys_resolver.1 b/doc/man/man1/scmp_sys_resolver.1
-index 37d48c1..155386a 100644
---- a/doc/man/man1/scmp_sys_resolver.1
-+++ b/doc/man/man1/scmp_sys_resolver.1
-@@ -34,7 +34,7 @@ special manner by libseccomp depending on the operation.
- .B \-a \fIARCH
- The architecture to use for resolving the system call.  Valid
- .I ARCH
--values are "x86", "x86_64", "x32", "arm", "aarch64", "loongarch64", "mips",
-+values are "x86", "x86_64", "x32", "arm", "aarch64", "loongarch64", "sw_64", "mips",
- "mipsel", "mips64", "mipsel64", "mips64n32", "mipsel64n32", "parisc",
- "parisc64", "ppc", "ppc64", "ppc64le", "s390", "s390x", "sheb" and "sh".
- .TP
-diff --git a/include/seccomp.h.in b/include/seccomp.h.in
-index 285989d..6c7f0a9 100644
---- a/include/seccomp.h.in
-+++ b/include/seccomp.h.in
-@@ -151,6 +151,20 @@ struct scmp_arg_cmp {
- #endif /* AUDIT_ARCH_AARCH64 */
- #define SCMP_ARCH_AARCH64	AUDIT_ARCH_AARCH64
- 
-+/**
-+ * The SW64 architecture tokens
-+ */
-+/* 64-bit SW64 audit support is not upstream yet */
-+#ifndef AUDIT_ARCH_SW64
-+#ifndef EM_SW64
-+#define EM_SW64 0x9916
-+#endif
-+#define AUDIT_ARCH_SW64	(EM_SW64|__AUDIT_ARCH_64BIT|__AUDIT_ARCH_LE)
-+#endif /* AUDIT_ARCH_SW64 */
-+#define SCMP_ARCH_SW64	AUDIT_ARCH_SW64
-+/* Avoid breaking packages that built with old libseccomp-dev */
-+#define SCMP_ARCH_SW_64 SCMP_ARCH_SW64
-+
- /**
-  * The LoongArch architecture tokens
-  */
-diff --git a/src/Makefile.am b/src/Makefile.am
-index 8c39d9e..55ff56c 100644
---- a/src/Makefile.am
-+++ b/src/Makefile.am
-@@ -32,6 +32,7 @@ SOURCES_ALL = \
- 	arch-x32.h arch-x32.c \
- 	arch-arm.h arch-arm.c \
- 	arch-aarch64.h arch-aarch64.c \
-+	arch-sw_64.h arch-sw_64.c arch-sw_64-syscalls.c \
- 	arch-loongarch64.h arch-loongarch64.c \
- 	arch-mips.h arch-mips.c \
- 	arch-mips64.h arch-mips64.c \
-diff --git a/src/arch-sw_64-syscalls.c b/src/arch-sw_64-syscalls.c
-new file mode 100644
-index 0000000..3f54e2b
+Index: libseccomp/src/arch.c
+===================================================================
+--- libseccomp.orig/src/arch.c
++++ libseccomp/src/arch.c
+@@ -36,6 +36,7 @@
+ #include "arch-arm.h"
+ #include "arch-aarch64.h"
+ #include "arch-loongarch64.h"
++#include "arch-sw_64.h"
+ #include "arch-mips.h"
+ #include "arch-mips64.h"
+ #include "arch-mips64n32.h"
+@@ -65,6 +66,8 @@ const struct arch_def *arch_def_native =
+ const struct arch_def *arch_def_native = &arch_def_aarch64;
+ #elif __loongarch64
+ const struct arch_def *arch_def_native = &arch_def_loongarch64;
++#elif __sw_64__
++const struct arch_def *arch_def_native = &arch_def_sw_64;
+ #elif __mips__ && _MIPS_SIM == _MIPS_SIM_ABI32
+ #if __MIPSEB__
+ const struct arch_def *arch_def_native = &arch_def_mips;
+@@ -139,6 +142,8 @@ const struct arch_def *arch_def_lookup(u
+ 		return &arch_def_aarch64;
+ 	case SCMP_ARCH_LOONGARCH64:
+ 		return &arch_def_loongarch64;
++	case SCMP_ARCH_SW64:
++		return &arch_def_sw_64;
+ 	case SCMP_ARCH_MIPS:
+ 		return &arch_def_mips;
+ 	case SCMP_ARCH_MIPSEL:
+@@ -191,6 +196,8 @@ const struct arch_def *arch_def_lookup_n
+ 		return &arch_def_arm;
+ 	else if (strcmp(arch_name, "aarch64") == 0)
+ 		return &arch_def_aarch64;
++	else if (strcmp(arch_name, "sw_64") == 0)
++		return &arch_def_sw_64;
+ 	else if (strcmp(arch_name, "loongarch64") == 0)
+ 		return &arch_def_loongarch64;
+ 	else if (strcmp(arch_name, "mips") == 0)
+Index: libseccomp/src/arch-sw_64.c
+===================================================================
 --- /dev/null
-+++ b/src/arch-sw_64-syscalls.c
-@@ -0,0 +1,466 @@
++++ libseccomp/src/arch-sw_64.c
+@@ -0,0 +1,39 @@
++/**
++ * Enhanced Seccomp sw64 Syscall Table
++ *
++ * Copyright (c) 2018 deepin Inc. <xiabin@deepin.com>
++ * Author: Xia Bin <snyh@snyh.org>
++ */
++
++/*
++ * This library is free software; you can redistribute it and/or modify it
++ * under the terms of version 2.1 of the GNU Lesser General Public License as
++ * published by the Free Software Foundation.
++ *
++ * This library is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
++ * for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public License
++ * along with this library; if not, see <http://www.gnu.org/licenses>.
++ */
++
++#include <stdlib.h>
++#include <errno.h>
++#include <linux/audit.h>
++
++#include "arch.h"
++#include "arch-sw_64.h"
++#include "syscalls.h"
++
++const struct arch_def arch_def_sw_64 = {
++	.token = SCMP_ARCH_SW64,
++	.token_bpf = AUDIT_ARCH_SW64,
++	.size = ARCH_SIZE_64,
++	.endian = ARCH_ENDIAN_LITTLE,
++	.syscall_resolve_name_raw = sw_64_syscall_resolve_name,
++	.syscall_resolve_num_raw = sw_64_syscall_resolve_num,
++	.syscall_rewrite = NULL,
++	.rule_add = NULL,
++};
++
+Index: libseccomp/src/arch-sw_64.h
+===================================================================
+--- /dev/null
++++ libseccomp/src/arch-sw_64.h
+@@ -0,0 +1,37 @@
++/**
++ * Enhanced Seccomp sw64 Syscall Table
++ *
++ * Copyright (c) 2018 deepin Inc. <xiabin@deepin.com>
++ * Author: Xia Bin <snyh@snyh.org>
++ */
++
++/*
++ * This library is free software; you can redistribute it and/or modify it
++ * under the terms of version 2.1 of the GNU Lesser General Public License as
++ * published by the Free Software Foundation.
++ *
++ * This library is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
++ * for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public License
++ * along with this library; if not, see <http://www.gnu.org/licenses>.
++ */
++
++#ifndef _ARCH_SW64_H
++#define _ARCH_SW64_H
++
++#include <inttypes.h>
++
++#include "arch.h"
++#include "system.h"
++
++extern const struct arch_def arch_def_sw_64;
++
++int sw_64_syscall_resolve_name(const char *name);
++const char *sw_64_syscall_resolve_num(int num);
++
++const struct arch_syscall_def *sw_64_syscall_iterate(unsigned int spot);
++
++#endif
+Index: libseccomp/src/arch-sw_64-syscalls.c
+===================================================================
+--- /dev/null
++++ libseccomp/src/arch-sw_64-syscalls.c
+@@ -0,0 +1,467 @@
 +/**
 + * Enhanced Seccomp sw64 Syscall Table
 + *
@@ -137,11 +194,13 @@ index 0000000..3f54e2b
 +    {"getxuid",24},
 +    {"ptrace",26},
 +    {"access",33},
++    {"alarm", __PNR_alarm},
 +    {"sync",36},
 +    {"kill",37},
 +    {"setpgid",39},
 +    {"dup",41},
 +    {"pipe",42},
++    {"pause", __PNR_pause},
 +    {"osf_set_program_attributes",43},
 +    {"open",45},
 +    {"getxgid",47},
@@ -196,7 +255,6 @@ index 0000000..3f54e2b
 +    {"osf_gettimeofday",116},
 +    {"osf_getrusage",117},
 +    {"getsockopt",118},
-+    {"socketcall",119},
 +    {"readv",120},
 +    {"writev",121},
 +    {"osf_settimeofday",122},
@@ -550,97 +608,10 @@ index 0000000..3f54e2b
 +	/* XXX - no safety checks here */
 +	return &sw_64_syscall_table[spot];
 +}
-diff --git a/src/arch-sw_64.c b/src/arch-sw_64.c
-new file mode 100644
-index 0000000..1fbd29a
---- /dev/null
-+++ b/src/arch-sw_64.c
-@@ -0,0 +1,38 @@
-+/**
-+ * Enhanced Seccomp sw64 Syscall Table
-+ *
-+ * Copyright (c) 2018 deepin Inc. <xiabin@deepin.com>
-+ * Author: Xia Bin <snyh@snyh.org>
-+ */
-+
-+/*
-+ * This library is free software; you can redistribute it and/or modify it
-+ * under the terms of version 2.1 of the GNU Lesser General Public License as
-+ * published by the Free Software Foundation.
-+ *
-+ * This library is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
-+ * for more details.
-+ *
-+ * You should have received a copy of the GNU Lesser General Public License
-+ * along with this library; if not, see <http://www.gnu.org/licenses>.
-+ */
-+
-+#include <stdlib.h>
-+#include <errno.h>
-+#include <linux/audit.h>
-+
-+#include "arch.h"
-+#include "arch-sw_64.h"
-+
-+const struct arch_def arch_def_sw_64 = {
-+	.token = SCMP_ARCH_SW64,
-+	.token_bpf = AUDIT_ARCH_SW64,
-+	.size = ARCH_SIZE_64,
-+	.endian = ARCH_ENDIAN_LITTLE,
-+	.syscall_resolve_name = sw_64_syscall_resolve_name,
-+	.syscall_resolve_num = sw_64_syscall_resolve_num,
-+	.syscall_rewrite = NULL,
-+	.rule_add = NULL,
-+};
-diff --git a/src/arch-sw_64.h b/src/arch-sw_64.h
-new file mode 100644
-index 0000000..0fae91d
---- /dev/null
-+++ b/src/arch-sw_64.h
-@@ -0,0 +1,37 @@
-+/**
-+ * Enhanced Seccomp sw64 Syscall Table
-+ *
-+ * Copyright (c) 2018 deepin Inc. <xiabin@deepin.com>
-+ * Author: Xia Bin <snyh@snyh.org>
-+ */
-+
-+/*
-+ * This library is free software; you can redistribute it and/or modify it
-+ * under the terms of version 2.1 of the GNU Lesser General Public License as
-+ * published by the Free Software Foundation.
-+ *
-+ * This library is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
-+ * for more details.
-+ *
-+ * You should have received a copy of the GNU Lesser General Public License
-+ * along with this library; if not, see <http://www.gnu.org/licenses>.
-+ */
-+
-+#ifndef _ARCH_SW64_H
-+#define _ARCH_SW64_H
-+
-+#include <inttypes.h>
-+
-+#include "arch.h"
-+#include "system.h"
-+
-+extern const struct arch_def arch_def_sw_64;
-+
-+int sw_64_syscall_resolve_name(const char *name);
-+const char *sw_64_syscall_resolve_num(int num);
-+
-+const struct arch_syscall_def *sw_64_syscall_iterate(unsigned int spot);
-+
-+#endif
-diff --git a/src/arch-syscall-dump.c b/src/arch-syscall-dump.c
-index abc1680..63db480 100644
---- a/src/arch-syscall-dump.c
-+++ b/src/arch-syscall-dump.c
+Index: libseccomp/src/arch-syscall-dump.c
+===================================================================
+--- libseccomp.orig/src/arch-syscall-dump.c
++++ libseccomp/src/arch-syscall-dump.c
 @@ -35,6 +35,7 @@
  #include "arch-x32.h"
  #include "arch-arm.h"
@@ -649,7 +620,7 @@ index abc1680..63db480 100644
  #include "arch-mips.h"
  #include "arch-mips64.h"
  #include "arch-mips64n32.h"
-@@ -111,6 +112,9 @@ int main(int argc, char *argv[])
+@@ -110,6 +111,9 @@ int main(int argc, char *argv[])
  		case SCMP_ARCH_LOONGARCH64:
  			sys = loongarch64_syscall_iterate(iter);
  			break;
@@ -659,50 +630,11 @@ index abc1680..63db480 100644
  		case SCMP_ARCH_MIPS:
  		case SCMP_ARCH_MIPSEL:
  			sys = mips_syscall_iterate(iter);
-diff --git a/src/arch.c b/src/arch.c
-index 8c45fa3..ed270e3 100644
---- a/src/arch.c
-+++ b/src/arch.c
-@@ -36,6 +36,7 @@
- #include "arch-arm.h"
- #include "arch-aarch64.h"
- #include "arch-loongarch64.h"
-+#include "arch-sw_64.h"
- #include "arch-mips.h"
- #include "arch-mips64.h"
- #include "arch-mips64n32.h"
-@@ -66,6 +67,8 @@ const struct arch_def *arch_def_native = &arch_def_arm;
- const struct arch_def *arch_def_native = &arch_def_aarch64;
- #elif __loongarch64
- const struct arch_def *arch_def_native = &arch_def_loongarch64;
-+#elif __sw_64__
-+const struct arch_def *arch_def_native = &arch_def_sw_64;
- #elif __mips__ && _MIPS_SIM == _MIPS_SIM_ABI32
- #if __MIPSEB__
- const struct arch_def *arch_def_native = &arch_def_mips;
-@@ -146,6 +149,8 @@ const struct arch_def *arch_def_lookup(uint32_t token)
- 		return &arch_def_aarch64;
- 	case SCMP_ARCH_LOONGARCH64:
- 		return &arch_def_loongarch64;
-+	case SCMP_ARCH_SW64:
-+		return &arch_def_sw_64;
- 	case SCMP_ARCH_MIPS:
- 		return &arch_def_mips;
- 	case SCMP_ARCH_MIPSEL:
-@@ -202,6 +207,8 @@ const struct arch_def *arch_def_lookup_name(const char *arch_name)
- 		return &arch_def_arm;
- 	else if (strcmp(arch_name, "aarch64") == 0)
- 		return &arch_def_aarch64;
-+	else if (strcmp(arch_name, "sw_64") == 0)
-+		return &arch_def_sw_64;
- 	else if (strcmp(arch_name, "loongarch64") == 0)
- 		return &arch_def_loongarch64;
- 	else if (strcmp(arch_name, "mips") == 0)
-diff --git a/src/gen_pfc.c b/src/gen_pfc.c
-index bb217c8..39cdfa6 100644
---- a/src/gen_pfc.c
-+++ b/src/gen_pfc.c
-@@ -63,6 +63,8 @@ static const char *_pfc_arch(const struct arch_def *arch)
+Index: libseccomp/src/gen_pfc.c
+===================================================================
+--- libseccomp.orig/src/gen_pfc.c
++++ libseccomp/src/gen_pfc.c
+@@ -63,6 +63,8 @@ static const char *_pfc_arch(const struc
  		return "aarch64";
  	case SCMP_ARCH_LOONGARCH64:
  		return "loongarch64";
@@ -711,24 +643,61 @@ index bb217c8..39cdfa6 100644
  	case SCMP_ARCH_MIPS:
  		return "mips";
  	case SCMP_ARCH_MIPSEL:
-diff --git a/tests/16-sim-arch_basic.c b/tests/16-sim-arch_basic.c
-index be269c9..67b6e97 100644
---- a/tests/16-sim-arch_basic.c
-+++ b/tests/16-sim-arch_basic.c
-@@ -81,6 +81,9 @@ int main(int argc, char *argv[])
+Index: libseccomp/src/Makefile.am
+===================================================================
+--- libseccomp.orig/src/Makefile.am
++++ libseccomp/src/Makefile.am
+@@ -32,6 +32,7 @@ SOURCES_ALL = \
+ 	arch-x32.h arch-x32.c \
+ 	arch-arm.h arch-arm.c \
+ 	arch-aarch64.h arch-aarch64.c \
++	arch-sw_64.h arch-sw_64.c arch-sw_64-syscalls.c \
+ 	arch-loongarch64.h arch-loongarch64.c \
+ 	arch-mips.h arch-mips.c \
+ 	arch-mips64.h arch-mips64.c \
+Index: libseccomp/include/seccomp.h.in
+===================================================================
+--- libseccomp.orig/include/seccomp.h.in
++++ libseccomp/include/seccomp.h.in
+@@ -151,6 +151,20 @@ struct scmp_arg_cmp {
+ #define SCMP_ARCH_AARCH64	AUDIT_ARCH_AARCH64
+ 
+ /**
++ * The SW64 architecture tokens
++ */
++/* 64-bit SW64 audit support is not upstream yet */
++#ifndef AUDIT_ARCH_SW64
++#ifndef EM_SW64
++#define EM_SW64 0x9916
++#endif
++#define AUDIT_ARCH_SW64	(EM_SW64|__AUDIT_ARCH_64BIT|__AUDIT_ARCH_LE)
++#endif /* AUDIT_ARCH_SW64 */
++#define SCMP_ARCH_SW64	AUDIT_ARCH_SW64
++/* Avoid breaking packages that built with old libseccomp-dev */
++#define SCMP_ARCH_SW_64 SCMP_ARCH_SW64
++
++/**
+  * The LoongArch architecture tokens
+  */
+ /* 64-bit LoongArch audit support is upstream as of 5.19-rc1 */
+Index: libseccomp/tests/16-sim-arch_basic.c
+===================================================================
+--- libseccomp.orig/tests/16-sim-arch_basic.c
++++ libseccomp/tests/16-sim-arch_basic.c
+@@ -83,6 +83,9 @@ int main(int argc, char *argv[])
+ 	rc = seccomp_arch_add(ctx, SCMP_ARCH_LOONGARCH64);
  	if (rc != 0)
  		goto out;
- 	rc = seccomp_arch_add(ctx, SCMP_ARCH_LOONGARCH64);
++	rc = seccomp_arch_add(ctx, SCMP_ARCH_SW64);
 +	if (rc != 0)
 +		goto out;
-+	rc = seccomp_arch_add(ctx, SCMP_ARCH_SW64);
+ 	rc = seccomp_arch_add(ctx, SCMP_ARCH_MIPSEL);
  	if (rc != 0)
  		goto out;
- 	rc = seccomp_arch_add(ctx, SCMP_ARCH_MIPSEL);
-diff --git a/tests/16-sim-arch_basic.py b/tests/16-sim-arch_basic.py
-index 79e6854..699a684 100755
---- a/tests/16-sim-arch_basic.py
-+++ b/tests/16-sim-arch_basic.py
+Index: libseccomp/tests/16-sim-arch_basic.py
+===================================================================
+--- libseccomp.orig/tests/16-sim-arch_basic.py
++++ libseccomp/tests/16-sim-arch_basic.py
 @@ -41,6 +41,7 @@ def test(args):
      f.add_arch(Arch("arm"))
      f.add_arch(Arch("aarch64"))
@@ -737,24 +706,24 @@ index 79e6854..699a684 100755
      f.add_arch(Arch("mipsel"))
      f.add_arch(Arch("mipsel64"))
      f.add_arch(Arch("mipsel64n32"))
-diff --git a/tests/23-sim-arch_all_le_basic.c b/tests/23-sim-arch_all_le_basic.c
-index ef6d2c3..f095893 100644
---- a/tests/23-sim-arch_all_le_basic.c
-+++ b/tests/23-sim-arch_all_le_basic.c
-@@ -60,6 +60,9 @@ int main(int argc, char *argv[])
+Index: libseccomp/tests/23-sim-arch_all_le_basic.c
+===================================================================
+--- libseccomp.orig/tests/23-sim-arch_all_le_basic.c
++++ libseccomp/tests/23-sim-arch_all_le_basic.c
+@@ -62,6 +62,9 @@ int main(int argc, char *argv[])
+ 	rc = seccomp_arch_add(ctx, seccomp_arch_resolve_name("loongarch64"));
  	if (rc != 0)
  		goto out;
- 	rc = seccomp_arch_add(ctx, seccomp_arch_resolve_name("loongarch64"));
++	rc = seccomp_arch_add(ctx, seccomp_arch_resolve_name("sw_64"));
 +	if (rc != 0)
 +		goto out;
-+	rc = seccomp_arch_add(ctx, seccomp_arch_resolve_name("sw_64"));
+ 	rc = seccomp_arch_add(ctx, seccomp_arch_resolve_name("mipsel"));
  	if (rc != 0)
  		goto out;
- 	rc = seccomp_arch_add(ctx, seccomp_arch_resolve_name("mipsel"));
-diff --git a/tests/23-sim-arch_all_le_basic.py b/tests/23-sim-arch_all_le_basic.py
-index 783dc25..4ce2b01 100755
---- a/tests/23-sim-arch_all_le_basic.py
-+++ b/tests/23-sim-arch_all_le_basic.py
+Index: libseccomp/tests/23-sim-arch_all_le_basic.py
+===================================================================
+--- libseccomp.orig/tests/23-sim-arch_all_le_basic.py
++++ libseccomp/tests/23-sim-arch_all_le_basic.py
 @@ -37,6 +37,7 @@ def test(args):
      f.add_arch(Arch("arm"))
      f.add_arch(Arch("aarch64"))
@@ -763,10 +732,10 @@ index 783dc25..4ce2b01 100755
      f.add_arch(Arch("mipsel"))
      f.add_arch(Arch("mipsel64"))
      f.add_arch(Arch("mipsel64n32"))
-diff --git a/tests/regression b/tests/regression
-index 32463c0..fda6bcd 100755
---- a/tests/regression
-+++ b/tests/regression
+Index: libseccomp/tests/regression
+===================================================================
+--- libseccomp.orig/tests/regression
++++ libseccomp/tests/regression
 @@ -25,6 +25,7 @@ GLBL_ARCH_LE_SUPPORT=" \
  	x86 x86_64 x32 \
  	arm aarch64 \
@@ -774,20 +743,20 @@ index 32463c0..fda6bcd 100755
 +	sw_64 \
  	mipsel mipsel64 mipsel64n32 \
  	ppc64le \
- 	riscv64 \
-@@ -803,7 +804,7 @@ function run_test_live() {
+ 	riscv64"
+@@ -798,7 +799,7 @@ function run_test_live() {
  
  	# setup the arch specific return values
  	case "$arch" in
--	x86|x86_64|x32|arm|aarch64|loongarch64|parisc|parisc64|ppc|ppc64|ppc64le|ppc|s390|s390x|riscv64|sh|sheb)
-+	x86|x86_64|x32|arm|aarch64|loongarch64|parisc|parisc64|ppc|ppc64|ppc64le|ppc|s390|s390x|riscv64|sh|sheb|sw_64)
+-	x86|x86_64|x32|arm|aarch64|loongarch64|parisc|parisc64|ppc|ppc64|ppc64le|ppc|s390|s390x|riscv64)
++	x86|x86_64|x32|arm|aarch64|loongarch64|parisc|parisc64|ppc|ppc64|ppc64le|ppc|s390|s390x|riscv64|sw_64)
  		rc_kill_process=159
  		rc_kill=159
  		rc_allow=160
-diff --git a/tools/scmp_arch_detect.c b/tools/scmp_arch_detect.c
-index c23cf7f..6219408 100644
---- a/tools/scmp_arch_detect.c
-+++ b/tools/scmp_arch_detect.c
+Index: libseccomp/tools/scmp_arch_detect.c
+===================================================================
+--- libseccomp.orig/tools/scmp_arch_detect.c
++++ libseccomp/tools/scmp_arch_detect.c
 @@ -81,6 +81,9 @@ int main(int argc, char *argv[])
  		case SCMP_ARCH_AARCH64:
  			printf("aarch64\n");
@@ -798,10 +767,10 @@ index c23cf7f..6219408 100644
  		case SCMP_ARCH_LOONGARCH64:
  			printf("loongarch64\n");
  			break;
-diff --git a/tools/scmp_bpf_disasm.c b/tools/scmp_bpf_disasm.c
-index 4572659..93f4f29 100644
---- a/tools/scmp_bpf_disasm.c
-+++ b/tools/scmp_bpf_disasm.c
+Index: libseccomp/tools/scmp_bpf_disasm.c
+===================================================================
+--- libseccomp.orig/tools/scmp_bpf_disasm.c
++++ libseccomp/tools/scmp_bpf_disasm.c
 @@ -486,6 +486,8 @@ int main(int argc, char *argv[])
  				arch = AUDIT_ARCH_AARCH64;
  			else if (strcmp(optarg, "loongarch64") == 0)
@@ -811,10 +780,10 @@ index 4572659..93f4f29 100644
  			else if (strcmp(optarg, "mips") == 0)
  				arch = AUDIT_ARCH_MIPS;
  			else if (strcmp(optarg, "mipsel") == 0)
-diff --git a/tools/scmp_bpf_sim.c b/tools/scmp_bpf_sim.c
-index 7d31d79..2427e89 100644
---- a/tools/scmp_bpf_sim.c
-+++ b/tools/scmp_bpf_sim.c
+Index: libseccomp/tools/scmp_bpf_sim.c
+===================================================================
+--- libseccomp.orig/tools/scmp_bpf_sim.c
++++ libseccomp/tools/scmp_bpf_sim.c
 @@ -261,6 +261,8 @@ int main(int argc, char *argv[])
  				arch = AUDIT_ARCH_AARCH64;
  			else if (strcmp(optarg, "loongarch64") == 0)
@@ -824,10 +793,10 @@ index 7d31d79..2427e89 100644
  			else if (strcmp(optarg, "mips") == 0)
  				arch = AUDIT_ARCH_MIPS;
  			else if (strcmp(optarg, "mipsel") == 0)
-diff --git a/tools/util.c b/tools/util.c
-index 327fc14..49cef4d 100644
---- a/tools/util.c
-+++ b/tools/util.c
+Index: libseccomp/tools/util.c
+===================================================================
+--- libseccomp.orig/tools/util.c
++++ libseccomp/tools/util.c
 @@ -46,6 +46,8 @@
  #define ARCH_NATIVE		AUDIT_ARCH_AARCH64
  #elif __loongarch64
@@ -837,15 +806,14 @@ index 327fc14..49cef4d 100644
  #elif __mips__ && _MIPS_SIM == _MIPS_SIM_ABI32
  #if __MIPSEB__
  #define ARCH_NATIVE		AUDIT_ARCH_MIPS
-diff --git a/tools/util.h b/tools/util.h
-index 24b9ed6..f719411 100644
---- a/tools/util.h
-+++ b/tools/util.h
-@@ -37,6 +37,17 @@
- #define AUDIT_ARCH_AARCH64	(EM_AARCH64|__AUDIT_ARCH_64BIT|__AUDIT_ARCH_LE)
+Index: libseccomp/tools/util.h
+===================================================================
+--- libseccomp.orig/tools/util.h
++++ libseccomp/tools/util.h
+@@ -38,6 +38,17 @@
  #endif /* AUDIT_ARCH_AARCH64 */
  
-+/**
+ /**
 + * The SW64 architecture tokens
 + */
 +/* 64-bit SW64 audit support is not upstream yet */
@@ -856,9 +824,20 @@ index 24b9ed6..f719411 100644
 +#define AUDIT_ARCH_SW64        (EM_SW64|__AUDIT_ARCH_64BIT|__AUDIT_ARCH_LE)
 +#endif /* AUDIT_ARCH_SW64 */
 +
- /**
++/**
   * The 64-bit LoongArch architecture tokens
   */
--- 
-2.45.2
-
+ /* 64-bit LoongArch audit support is upstream as of 5.19-rc1 */
+Index: libseccomp/doc/man/man1/scmp_sys_resolver.1
+===================================================================
+--- libseccomp.orig/doc/man/man1/scmp_sys_resolver.1
++++ libseccomp/doc/man/man1/scmp_sys_resolver.1
+@@ -36,7 +36,7 @@ The architecture to use for resolving th
+ .I ARCH
+ values are "x86", "x86_64", "x32", "arm", "aarch64", "loongarch64", "mips",
+ "mipsel", "mips64", "mipsel64", "mips64n32", "mipsel64n32", "parisc",
+-"parisc64", "ppc", "ppc64", "ppc64le", "s390" and "s390x".
++"parisc64", "ppc", "ppc64", "ppc64le", "s390", "s390x" and "sw_64".
+ .TP
+ .B \-t
+ If necessary, translate the system call name to the proper system call number,

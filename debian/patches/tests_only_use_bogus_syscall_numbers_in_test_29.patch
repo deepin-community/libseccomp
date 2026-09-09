@@ -1,0 +1,75 @@
+From 87876aa6ddb7cd70953f120f3d96495c2684ddda Mon Sep 17 00:00:00 2001
+From: Paul Moore <paul@paul-moore.com>
+Date: Thu, 5 Sep 2024 17:29:13 -0400
+Subject: [PATCH] tests: only use bogus syscall numbers in test 29
+
+The goal of test 29 is to test bogus negative syscall numbers,
+unfortunately it appears our choice of syscalls was not bogus on all
+the architectures we support.  This commit fixes that by picking a
+syscall number well outside the pseudo-syscall/PNR range and removing
+the sysmips(2) syscall from the test so as to not cause problems
+at a later date.
+
+Signed-off-by: Paul Moore <paul@paul-moore.com>
+Signed-off-by: Tom Hromatka <tom.hromatka@oracle.com>
+---
+ tests/29-sim-pseudo_syscall.c     | 11 ++---------
+ tests/29-sim-pseudo_syscall.py    |  7 +------
+ tests/29-sim-pseudo_syscall.tests |  3 +--
+ 3 files changed, 4 insertions(+), 17 deletions(-)
+
+diff --git a/tests/29-sim-pseudo_syscall.c b/tests/29-sim-pseudo_syscall.c
+index 86734a84..3c3405a8 100644
+--- a/tests/29-sim-pseudo_syscall.c
++++ b/tests/29-sim-pseudo_syscall.c
+@@ -49,15 +49,8 @@ int main(int argc, char *argv[])
+ 	if (rc < 0)
+ 		goto out;
+ 
+-	/* SCMP_SYS(sysmips) == 4294957190 (unsigned) */
+-	rc = seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(sysmips), 0);
+-	if (rc < 0)
+-		goto out;
+-	rc = seccomp_rule_add_exact(ctx, SCMP_ACT_KILL, SCMP_SYS(sysmips), 0);
+-	if (rc == 0)
+-		goto out;
+-	/* -10001 == 4294957295 (unsigned) */
+-	rc = seccomp_rule_add_exact(ctx, SCMP_ACT_KILL, -10001, 0);
++	/* -100001 == 4294867295 (unsigned) */
++	rc = seccomp_rule_add_exact(ctx, SCMP_ACT_KILL, -100001, 0);
+ 	if (rc == 0)
+ 		goto out;
+ 
+diff --git a/tests/29-sim-pseudo_syscall.py b/tests/29-sim-pseudo_syscall.py
+index d7ab33be..74ffc61d 100755
+--- a/tests/29-sim-pseudo_syscall.py
++++ b/tests/29-sim-pseudo_syscall.py
+@@ -32,13 +32,8 @@ def test(args):
+     f = SyscallFilter(ALLOW)
+     f.remove_arch(Arch())
+     f.add_arch(Arch("x86"))
+-    f.add_rule(KILL, "sysmips")
+     try:
+-        f.add_rule_exactly(KILL, "sysmips")
+-    except RuntimeError:
+-        pass
+-    try:
+-        f.add_rule_exactly(KILL, -10001)
++        f.add_rule_exactly(KILL, -100001)
+     except RuntimeError:
+         pass
+     return f
+diff --git a/tests/29-sim-pseudo_syscall.tests b/tests/29-sim-pseudo_syscall.tests
+index 45f8dceb..779761e8 100644
+--- a/tests/29-sim-pseudo_syscall.tests
++++ b/tests/29-sim-pseudo_syscall.tests
+@@ -9,8 +9,7 @@ test type: bpf-sim
+ 
+ # Testname		Arch	Syscall		Arg0	Arg1	Arg2	Arg3	Arg4	Arg5	Result
+ 29-sim-pseudo_syscall	+x86	0-10		N	N	N	N	N	N	ALLOW
+-29-sim-pseudo_syscall	+x86	4294957190	N	N	N	N	N	N	ALLOW
+-29-sim-pseudo_syscall	+x86	4294957295	N	N	N	N	N	N	ALLOW
++29-sim-pseudo_syscall	+x86	4294867295	N	N	N	N	N	N	ALLOW
+ 
+ test type: bpf-valgrind
+ 
