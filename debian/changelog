@@ -1,5 +1,12 @@
+libseccomp (2.5.5-2deepin1) unstable; urgency=medium
+
+  * Re-add sw64 support (0001-feat-add-sw64-support.patch): the 2.5.5-2 update dropped the deepin sw64 port; re-backport it adapted to 2.5.5-2 to fix the sw64 build.
+
+ -- lichenggang <lichenggang@uniontech.com>  Wed, 09 Sep 2026 10:24:07 +0800
+
 libseccomp (2.5.5-2) unstable; urgency=medium
 
+  [ Felix Geyer ]
   * Revert: Dynamically skip autopkgtests when the test runner already applies
     seccomp restrictions.
     - Container based backends usually apply a seccomp filter so it's better
@@ -16,6 +23,9 @@ libseccomp (2.5.5-2) unstable; urgency=medium
     - arch_unify_handling_of_syscall.tbl_in_arch-syscall-validate.patch
     - arch_adapt_arch-syscall-validate_to_Linux_6.11.patch
     - syscalls_Update_the_syscall_table_for_Linux_v6.12-rc5.patch
+
+  [ lichenggang ]
+  * Add 0001-feat-add-sw64-support.patch: sw64 arch support for libseccomp (re-backport from master, adapted to 2.5.5-2).
 
  -- Felix Geyer <fgeyer@debian.org>  Sun, 24 Nov 2024 21:54:16 +0100
 
