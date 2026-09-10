@@ -1,3 +1,17 @@
+libseccomp (2.6.0-2deepin2) unstable; urgency=medium
+
+  * Fix sw64 unit test failures: add missing alarm/pause syscall entries
+    and remove spurious socketcall entry from the sw64 syscall table
+
+ -- lichenggang <lichenggang@uniontech.com>  Thu, 10 Sep 2026 12:28:18 +0800
+
+libseccomp (2.6.0-2deepin1) unstable; urgency=medium
+
+  * Restore deepin patches on top of 2.6.0-2.
+  * Add sw64 architecture support (fixed for 2.6.0 struct arch_def).
+
+ -- lichenggang <lichenggang@uniontech.com>  Fri, 17 Jul 2026 23:53:24 +0800
+
 libseccomp (2.6.0-2) unstable; urgency=medium
 
   * Upload to unstable.
